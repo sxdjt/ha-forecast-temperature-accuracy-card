@@ -1,0 +1,17 @@
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local development
+CLAUDE.md
+claude.md
+
+# Node (if adding build process later)
+node_modules/
+npm-debug.log
