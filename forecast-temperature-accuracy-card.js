@@ -1,7 +1,7 @@
-/* Last modified: 21-Jan-2026 22:10 */
+/* Last modified: 24-Jan-2026 22:10 */
 import { LitElement, html, css } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
 
-const CARD_VERSION = '1.0.0';
+const CARD_VERSION = '1.1.0';
 const STORAGE_KEY_PREFIX = 'forecast-temp-accuracy-';
 const DEFAULT_HISTORY_DAYS = 7;
 const DEFAULT_REFRESH_INTERVAL = 60; // minutes (hourly - forecasts aren't more granular)
@@ -272,12 +272,13 @@ class ForecastTemperatureAccuracyCard extends LitElement {
       throw new Error('temperature_sensor is required');
     }
 
-    // Validate that either weather_entity or lat/lon is provided
+    // Validate that one forecast source is provided
     const hasWeatherEntity = !!config.weather_entity;
     const hasCoordinates = config.latitude !== undefined && config.longitude !== undefined;
+    const hasTempest = !!config.tempest_api_key && !!config.tempest_station_id;
 
-    if (!hasWeatherEntity && !hasCoordinates) {
-      throw new Error('Either weather_entity or latitude/longitude is required');
+    if (!hasWeatherEntity && !hasCoordinates && !hasTempest) {
+      throw new Error('A forecast source is required: weather_entity, latitude/longitude, or tempest_api_key/tempest_station_id');
     }
 
     this.config = {
@@ -286,6 +287,8 @@ class ForecastTemperatureAccuracyCard extends LitElement {
       weather_entity: config.weather_entity || null,
       latitude: config.latitude,
       longitude: config.longitude,
+      tempest_api_key: config.tempest_api_key || null,
+      tempest_station_id: config.tempest_station_id || null,
       unit: config.unit || null, // null = auto from HA
       history_days: config.history_days || DEFAULT_HISTORY_DAYS,
       refresh_interval: config.refresh_interval || DEFAULT_REFRESH_INTERVAL,
@@ -370,8 +373,10 @@ class ForecastTemperatureAccuracyCard extends LitElement {
       // Get actual temperature from sensor
       this._updateActualTemperature();
 
-      // Get forecast temperature
-      if (this.config.weather_entity) {
+      // Get forecast temperature from configured source
+      if (this.config.tempest_api_key && this.config.tempest_station_id) {
+        await this._fetchFromTempest();
+      } else if (this.config.weather_entity) {
         await this._fetchFromWeatherEntity();
       } else {
         await this._fetchFromOpenMeteo();
@@ -452,6 +457,64 @@ class ForecastTemperatureAccuracyCard extends LitElement {
 
     // Open-Meteo returns Celsius by default
     this._currentForecast = this._normalizeTemperature(currentTemp, 'C');
+  }
+
+  async _fetchFromTempest() {
+    const { tempest_api_key, tempest_station_id } = this.config;
+
+    // Request temperature in Fahrenheit (we'll convert as needed)
+    const url = `https://swd.weatherflow.com/swd/rest/better_forecast?station_id=${tempest_station_id}&units_temp=f&units_wind=mph&units_pressure=hpa&units_precip=in&units_distance=mi&api_key=${tempest_api_key}`;
+
+    const response = await fetch(url, {
+      headers: {
+        'accept': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new Error('Tempest API: Invalid API key');
+      } else if (response.status === 404) {
+        throw new Error('Tempest API: Station not found');
+      }
+      throw new Error(`Tempest API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    // Check for API-level errors
+    if (data.status && data.status.status_code !== 0) {
+      throw new Error(`Tempest API: ${data.status.status_message || 'Unknown error'}`);
+    }
+
+    // Get hourly forecast array
+    const hourlyForecast = data.forecast?.hourly;
+    if (!hourlyForecast || hourlyForecast.length === 0) {
+      throw new Error('Tempest API: No hourly forecast data available');
+    }
+
+    // Find the forecast entry for the current hour
+    // The first entry is typically the current hour, but let's match by timestamp to be safe
+    const now = Date.now();
+    const currentHourTimestamp = Math.floor(now / 1000); // Current time in seconds
+
+    // Find the hourly entry closest to current time (within an hour)
+    let currentHourForecast = hourlyForecast[0]; // Default to first entry
+    for (const hourly of hourlyForecast) {
+      // Each entry has a 'time' field (unix timestamp in seconds)
+      if (hourly.time && Math.abs(hourly.time - currentHourTimestamp) < 3600) {
+        currentHourForecast = hourly;
+        break;
+      }
+    }
+
+    const forecastTemp = currentHourForecast.air_temperature;
+    if (forecastTemp === undefined || forecastTemp === null) {
+      throw new Error('Tempest API: No air_temperature in forecast');
+    }
+
+    // We requested Fahrenheit (units_temp=f), so normalize from F
+    this._currentForecast = this._normalizeTemperature(forecastTemp, 'F');
   }
 
   _normalizeTemperature(value, sourceUnit) {
@@ -695,6 +758,11 @@ class ForecastTemperatureAccuracyCard extends LitElement {
     const secondaryTextColor = computedStyle.getPropertyValue('--secondary-text-color').trim() || '#666';
     const dividerColor = computedStyle.getPropertyValue('--divider-color').trim() || '#e0e0e0';
 
+    // Calculate x-axis range based on history_days config
+    const now = Date.now();
+    const xAxisMin = now - (this.config.history_days * 24 * 60 * 60 * 1000);
+    const xAxisMax = now;
+
     const options = {
       chart: {
         type: 'line',
@@ -726,7 +794,7 @@ class ForecastTemperatureAccuracyCard extends LitElement {
         }
       ],
       stroke: {
-        curve: 'smooth',
+        curve: 'straight',
         width: 2
       },
       markers: {
@@ -737,6 +805,8 @@ class ForecastTemperatureAccuracyCard extends LitElement {
       },
       xaxis: {
         type: 'datetime',
+        min: xAxisMin,
+        max: xAxisMax,
         labels: {
           datetimeUTC: false,
           style: {
@@ -835,9 +905,12 @@ class ForecastTemperatureAccuracyCard extends LitElement {
       ? this._currentForecast - this._currentActual
       : null;
 
-    const source = this.config.weather_entity
-      ? `Weather: ${this.hass.states[this.config.weather_entity]?.attributes?.friendly_name || this.config.weather_entity}`
-      : 'Open-Meteo';
+    let source = 'Open-Meteo';
+    if (this.config.tempest_api_key && this.config.tempest_station_id) {
+      source = `Tempest (Station ${this.config.tempest_station_id})`;
+    } else if (this.config.weather_entity) {
+      source = `Weather: ${this.hass.states[this.config.weather_entity]?.attributes?.friendly_name || this.config.weather_entity}`;
+    }
 
     return html`
       <ha-card>
@@ -935,6 +1008,8 @@ class ForecastTemperatureAccuracyCard extends LitElement {
 
         <div class="source-info">
           ${source} | ${this._statistics?.recordCount || 0} comparisons | ${this.config.history_days} day history
+          <br>
+          Charting from ApexCharts
         </div>
       </ha-card>
     `;
@@ -1083,34 +1158,44 @@ class ForecastTemperatureAccuracyCardEditor extends LitElement {
       newConfig[key] = value;
     }
 
+    this._config = newConfig;
     this._fireConfigChanged(newConfig);
   }
 
-  _useWeatherEntity() {
-    return !!this._config?.weather_entity;
+  // Returns 'openmeteo', 'weather', or 'tempest'
+  _getSourceType() {
+    // Check if property exists (not just truthy, since empty string is valid during editing)
+    if ('tempest_api_key' in (this._config || {}) || 'tempest_station_id' in (this._config || {})) {
+      return 'tempest';
+    }
+    if ('weather_entity' in (this._config || {})) {
+      return 'weather';
+    }
+    return 'openmeteo';
   }
 
-  _setSourceType(useWeatherEntity) {
+  _setSourceType(sourceType) {
     const newConfig = { ...this._config };
 
-    if (useWeatherEntity) {
-      // Switch to weather entity mode
-      delete newConfig.latitude;
-      delete newConfig.longitude;
-      if (!newConfig.weather_entity) {
-        newConfig.weather_entity = '';
-      }
+    // Clear all source-specific fields first
+    delete newConfig.latitude;
+    delete newConfig.longitude;
+    delete newConfig.weather_entity;
+    delete newConfig.tempest_api_key;
+    delete newConfig.tempest_station_id;
+
+    if (sourceType === 'weather') {
+      newConfig.weather_entity = '';
+    } else if (sourceType === 'tempest') {
+      newConfig.tempest_api_key = '';
+      newConfig.tempest_station_id = '';
     } else {
-      // Switch to Open-Meteo mode
-      delete newConfig.weather_entity;
-      if (newConfig.latitude === undefined) {
-        newConfig.latitude = 0;
-      }
-      if (newConfig.longitude === undefined) {
-        newConfig.longitude = 0;
-      }
+      // Open-Meteo
+      newConfig.latitude = 0;
+      newConfig.longitude = 0;
     }
 
+    this._config = newConfig;
     this._fireConfigChanged(newConfig);
   }
 
@@ -1119,12 +1204,12 @@ class ForecastTemperatureAccuracyCardEditor extends LitElement {
       return html``;
     }
 
-    const useWeatherEntity = this._useWeatherEntity();
+    const sourceType = this._getSourceType();
 
     return html`
       <div class="card-config">
         ${this._renderBasicSettings()}
-        ${this._renderDataSource(useWeatherEntity)}
+        ${this._renderDataSource(sourceType)}
         ${this._renderDisplayOptions()}
         ${this._renderAdvancedSettings()}
       </div>
@@ -1155,27 +1240,33 @@ class ForecastTemperatureAccuracyCardEditor extends LitElement {
     `;
   }
 
-  _renderDataSource(useWeatherEntity) {
+  _renderDataSource(sourceType) {
     return html`
       <div class="section">
         <h3>Forecast Source</h3>
 
         <div class="source-toggle">
           <button
-            class=${!useWeatherEntity ? 'active' : ''}
-            @click=${() => this._setSourceType(false)}
+            class=${sourceType === 'openmeteo' ? 'active' : ''}
+            @click=${() => this._setSourceType('openmeteo')}
           >
-            Open-Meteo API
+            Open-Meteo
           </button>
           <button
-            class=${useWeatherEntity ? 'active' : ''}
-            @click=${() => this._setSourceType(true)}
+            class=${sourceType === 'weather' ? 'active' : ''}
+            @click=${() => this._setSourceType('weather')}
           >
-            HA Weather Entity
+            HA Weather
+          </button>
+          <button
+            class=${sourceType === 'tempest' ? 'active' : ''}
+            @click=${() => this._setSourceType('tempest')}
+          >
+            Tempest
           </button>
         </div>
 
-        ${useWeatherEntity ? html`
+        ${sourceType === 'weather' ? html`
           <ha-selector
             .hass=${this.hass}
             .selector=${{ entity: { domain: 'weather' } }}
@@ -1185,6 +1276,20 @@ class ForecastTemperatureAccuracyCardEditor extends LitElement {
             @value-changed=${(e) => this._valueChanged('weather_entity', e.detail.value)}
           ></ha-selector>
           <p class="helper-text">Select a weather entity that provides hourly forecasts</p>
+        ` : sourceType === 'tempest' ? html`
+          <ha-textfield
+            label="Tempest API Key"
+            type="password"
+            .value=${this._config.tempest_api_key || ''}
+            @input=${(e) => this._valueChanged('tempest_api_key', e.target.value)}
+          ></ha-textfield>
+
+          <ha-textfield
+            label="Tempest Station ID"
+            .value=${this._config.tempest_station_id || ''}
+            @input=${(e) => this._valueChanged('tempest_station_id', e.target.value)}
+          ></ha-textfield>
+          <p class="helper-text">Enter your Tempest API key and station ID from tempestwx.com</p>
         ` : html`
           <div class="coordinates-row">
             <ha-textfield
