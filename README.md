@@ -1,7 +1,6 @@
 # Forecast Validation Card
 
 ![GitHub Release](https://img.shields.io/github/v/release/sxdjt/ha-forecast-temperature-accuracy-card?style=for-the-badge)
-![GitHub Release Date](https://img.shields.io/github/release-date/sxdjt/horizontal-waterfall-history-card?style=for-the-badge)
 [![AI Assisted](https://img.shields.io/badge/AI-Claude%20Code-AAAAAA.svg?style=for-the-badge)](https://claude.ai/code)
 ![GitHub License](https://img.shields.io/github/license/sxdjt/ha-forecast-temperature-accuracy-card?style=for-the-badge)
 
