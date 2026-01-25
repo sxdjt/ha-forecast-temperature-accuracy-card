@@ -5,12 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-01-24
+
+### Removed
+
+- Home Assistant Weather Entity support (simplifying to Open-Meteo and Tempest only)
+
+### Changed
+
+- Two-way source toggle in visual editor (Open-Meteo / Tempest)
+
 ## [1.1.0] - 2026-01-24
 
 ### Added
 
-- Tempest API support as third forecast source option
-- Three-way source toggle in visual editor (Open-Meteo / HA Weather / Tempest)
+- Tempest API support as forecast source option
+- Source toggle in visual editor
 - Configuration options: `tempest_api_key` and `tempest_station_id`
 
 ### Fixed
@@ -31,7 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Simplified to instant comparison model (forecast vs actual at same moment)
 - Single-file LitElement card with CDN imports
 - Statistics display: MAE, Bias, Accuracy percentage, Trend analysis
-- Support for Home Assistant weather entities as forecast source
+- Support for multiple forecast sources
 - Temperature unit selection (Celsius/Fahrenheit/Auto)
 - Tooltips on all UI elements
 - Visual editor for all configuration options

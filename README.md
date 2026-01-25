@@ -9,7 +9,7 @@ A custom Lovelace card for Home Assistant that compares forecast temperatures wi
 
 ## Features
 
-- **Three forecast sources**: Open-Meteo API, Home Assistant Weather entities, or Tempest API
+- **Two forecast sources**: Open-Meteo API or Tempest API
 - Compare what the forecast says the temperature is vs what it actually is
 - Track forecast accuracy over configurable time periods
 - Calculate and display:
@@ -36,15 +36,6 @@ latitude: 48.60
 longitude: -93.40
 ```
 
-### Using A Home Assistant Weather Entity
-
-```yaml
-type: custom:forecast-temperature-accuracy-card
-title: Forecast Accuracy
-temperature_sensor: sensor.outdoor_temperature
-weather_entity: weather.home
-```
-
 ### [Using Tempest API](#tempest-api-setup)
 
 ```yaml
@@ -69,7 +60,6 @@ tempest_station_id: "12345"
 |--------|------|---------|-------------|
 | `latitude` | number | - | Latitude for **Open-Meteo API** |
 | `longitude` | number | - | Longitude for **Open-Meteo API** |
-| `weather_entity` | string | - | **HA weather entity** to get forecast from |
 | `tempest_api_key` | string | - | Your **Tempest** API key from tempestwx.com |
 | `tempest_station_id` | string | - | Your **Tempest** station ID |
 
@@ -150,10 +140,6 @@ Data is automatically pruned to keep only records within the configured `history
 
 The card records comparisons hourly. Wait at least one hour for the first data point to appear.
 
-### "No current temperature available from weather entity"
-
-Your weather entity may not provide current temperature data. Try using Open-Meteo instead by specifying latitude/longitude.
-
 ### Statistics not calculating
 
 Statistics require at least one recorded comparison. Check back after data has been collected.
@@ -164,7 +150,6 @@ Statistics require at least one recorded comparison. Check back after data has b
 - A temperature sensor entity (for actual readings)
 - One of the following forecast sources:
   - Latitude/longitude for Open-Meteo API
-  - A Home Assistant weather entity
   - Tempest API key and station ID
 
 ## Tempest API Setup

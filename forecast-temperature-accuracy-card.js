@@ -1,7 +1,7 @@
-/* Last modified: 24-Jan-2026 22:10 */
+/* Last modified: 24-Jan-2026 22:45 */
 import { LitElement, html, css } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
 
-const CARD_VERSION = '1.1.0';
+const CARD_VERSION = '1.2.0';
 const STORAGE_KEY_PREFIX = 'forecast-temp-accuracy-';
 const DEFAULT_HISTORY_DAYS = 7;
 const DEFAULT_REFRESH_INTERVAL = 60; // minutes (hourly - forecasts aren't more granular)
@@ -273,18 +273,16 @@ class ForecastTemperatureAccuracyCard extends LitElement {
     }
 
     // Validate that one forecast source is provided
-    const hasWeatherEntity = !!config.weather_entity;
     const hasCoordinates = config.latitude !== undefined && config.longitude !== undefined;
     const hasTempest = !!config.tempest_api_key && !!config.tempest_station_id;
 
-    if (!hasWeatherEntity && !hasCoordinates && !hasTempest) {
-      throw new Error('A forecast source is required: weather_entity, latitude/longitude, or tempest_api_key/tempest_station_id');
+    if (!hasCoordinates && !hasTempest) {
+      throw new Error('A forecast source is required: latitude/longitude (Open-Meteo) or tempest_api_key/tempest_station_id (Tempest)');
     }
 
     this.config = {
       title: config.title || 'Forecast Temperature Accuracy',
       temperature_sensor: config.temperature_sensor,
-      weather_entity: config.weather_entity || null,
       latitude: config.latitude,
       longitude: config.longitude,
       tempest_api_key: config.tempest_api_key || null,
@@ -376,8 +374,6 @@ class ForecastTemperatureAccuracyCard extends LitElement {
       // Get forecast temperature from configured source
       if (this.config.tempest_api_key && this.config.tempest_station_id) {
         await this._fetchFromTempest();
-      } else if (this.config.weather_entity) {
-        await this._fetchFromWeatherEntity();
       } else {
         await this._fetchFromOpenMeteo();
       }
@@ -413,26 +409,6 @@ class ForecastTemperatureAccuracyCard extends LitElement {
     this._currentActual = this._normalizeTemperature(
       value,
       sensorState.attributes.unit_of_measurement
-    );
-  }
-
-  async _fetchFromWeatherEntity() {
-    const weatherState = this.hass.states[this.config.weather_entity];
-    if (!weatherState) {
-      throw new Error(`Weather entity not found: ${this.config.weather_entity}`);
-    }
-
-    // Get current temperature from weather entity
-    // Weather entities have a 'temperature' attribute for current conditions
-    const currentTemp = weatherState.attributes.temperature;
-
-    if (currentTemp === undefined || currentTemp === null) {
-      throw new Error('No current temperature available from weather entity');
-    }
-
-    this._currentForecast = this._normalizeTemperature(
-      currentTemp,
-      weatherState.attributes.temperature_unit || 'C'
     );
   }
 
@@ -908,8 +884,6 @@ class ForecastTemperatureAccuracyCard extends LitElement {
     let source = 'Open-Meteo';
     if (this.config.tempest_api_key && this.config.tempest_station_id) {
       source = `Tempest (Station ${this.config.tempest_station_id})`;
-    } else if (this.config.weather_entity) {
-      source = `Weather: ${this.hass.states[this.config.weather_entity]?.attributes?.friendly_name || this.config.weather_entity}`;
     }
 
     return html`
@@ -1162,14 +1136,11 @@ class ForecastTemperatureAccuracyCardEditor extends LitElement {
     this._fireConfigChanged(newConfig);
   }
 
-  // Returns 'openmeteo', 'weather', or 'tempest'
+  // Returns 'openmeteo' or 'tempest'
   _getSourceType() {
     // Check if property exists (not just truthy, since empty string is valid during editing)
     if ('tempest_api_key' in (this._config || {}) || 'tempest_station_id' in (this._config || {})) {
       return 'tempest';
-    }
-    if ('weather_entity' in (this._config || {})) {
-      return 'weather';
     }
     return 'openmeteo';
   }
@@ -1180,13 +1151,10 @@ class ForecastTemperatureAccuracyCardEditor extends LitElement {
     // Clear all source-specific fields first
     delete newConfig.latitude;
     delete newConfig.longitude;
-    delete newConfig.weather_entity;
     delete newConfig.tempest_api_key;
     delete newConfig.tempest_station_id;
 
-    if (sourceType === 'weather') {
-      newConfig.weather_entity = '';
-    } else if (sourceType === 'tempest') {
+    if (sourceType === 'tempest') {
       newConfig.tempest_api_key = '';
       newConfig.tempest_station_id = '';
     } else {
@@ -1253,12 +1221,6 @@ class ForecastTemperatureAccuracyCardEditor extends LitElement {
             Open-Meteo
           </button>
           <button
-            class=${sourceType === 'weather' ? 'active' : ''}
-            @click=${() => this._setSourceType('weather')}
-          >
-            HA Weather
-          </button>
-          <button
             class=${sourceType === 'tempest' ? 'active' : ''}
             @click=${() => this._setSourceType('tempest')}
           >
@@ -1266,17 +1228,7 @@ class ForecastTemperatureAccuracyCardEditor extends LitElement {
           </button>
         </div>
 
-        ${sourceType === 'weather' ? html`
-          <ha-selector
-            .hass=${this.hass}
-            .selector=${{ entity: { domain: 'weather' } }}
-            .value=${this._config.weather_entity || ''}
-            .label=${'Weather Entity'}
-            .required=${true}
-            @value-changed=${(e) => this._valueChanged('weather_entity', e.detail.value)}
-          ></ha-selector>
-          <p class="helper-text">Select a weather entity that provides hourly forecasts</p>
-        ` : sourceType === 'tempest' ? html`
+        ${sourceType === 'tempest' ? html`
           <ha-textfield
             label="Tempest API Key"
             type="password"
