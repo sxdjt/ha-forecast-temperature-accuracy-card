@@ -8,7 +8,6 @@ A custom Lovelace card for Home Assistant that compares forecast temperatures wi
 
 ## Features
 
-- **Two forecast sources**: Open-Meteo API or Tempest API
 - Compare what the forecast says the temperature is vs what it actually is
 - Track forecast accuracy over configurable time periods
 - Calculate and display:
@@ -18,6 +17,7 @@ A custom Lovelace card for Home Assistant that compares forecast temperatures wi
   - Accuracy trends (improving/stable/degrading)
 - [ApexCharts](https://github.com/RomRider/apexcharts-card) graph comparing forecast vs actual temperatures
 - Historical data stored in browser localStorage
+- Currently supports Open-Meteo API or Tempest API forecast sources.  Others may be added in the future.
 
 ## Installation
 
@@ -67,6 +67,7 @@ tempest_station_id: "12345"
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `chart_height` | number | `200` | Height of the chart in pixels (100-400) |
+| `forecast_lookahead` | number | `0` | Hours ahead for forecast (0-48). See [Forecast Lookahead](#forecast-lookahead) below. |
 | `history_days` | number | `7` | Days of history to retain for statistics (1-30) |
 | `refresh_interval` | number | `60` | Minutes between data refreshes (5-60) |
 | `show_chart` | boolean | `true` | Show the ApexCharts history graph |
@@ -80,6 +81,30 @@ Every hour (by default), the card:
 2. Gets the actual temperature from your sensor
 3. Records the comparison (forecast, actual, delta)
 4. Updates statistics based on all recorded comparisons
+
+## Forecast Lookahead
+
+By default (`forecast_lookahead: 0`), the card compares what the forecast says the temperature is **now** vs what it actually is **now**. This answers the question: "When the forecast says it's 72 degrees, is it actually 72 degrees?"
+
+With lookahead enabled (e.g., `forecast_lookahead: 3`), the **chart** shows the forecasted temperature for X hours ahead, while the comparison boxes and statistics continue to compare NOW vs NOW.
+
+This lets you see how temperature trends align with the forecast. The chart shows:
+- **Forecast line**: What the forecast predicted the temperature would be X hours from the recording time
+- **Actual line**: What the temperature actually was at the recording time
+
+By comparing these lines, you can observe whether the actual temperature is trending toward where the forecast says it will be.
+
+**Example configuration:**
+```yaml
+type: custom:forecast-temperature-accuracy-card
+title: Forecast Accuracy (3h lookahead chart)
+temperature_sensor: sensor.outdoor_temperature
+latitude: 48.60
+longitude: -93.40
+forecast_lookahead: 3
+```
+
+**NOTE:** The lookahead only affects the chart. The comparison boxes (Forecast, Actual, Delta) and accuracy statistics always compare current forecast vs current actual.
 
 ## User Interface
 
