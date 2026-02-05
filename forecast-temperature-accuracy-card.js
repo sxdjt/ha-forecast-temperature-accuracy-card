@@ -1,4 +1,3 @@
-/* Last modified: 25-Jan-2026 20:08 */
 import { LitElement, html, css } from 'https://cdn.jsdelivr.net/gh/lit/dist@3/core/lit-core.min.js';
 
 const CARD_VERSION = '1.4.0';
