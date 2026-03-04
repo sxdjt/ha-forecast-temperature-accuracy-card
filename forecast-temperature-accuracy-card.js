@@ -1918,6 +1918,6 @@ window.customCards.push({
 
 console.info(
   `%c FORECAST-TEMPERATURE-ACCURACY-CARD %c v${CARD_VERSION} `,
-  'color: cyan; font-weight: bold; background: black',
-  'color: white; font-weight: bold; background: dimgray'
+  'color: black; background: #F2720C; font-weight: 600;',
+  'color: black; background: #00a5c9; font-weight: 600;'
 );
