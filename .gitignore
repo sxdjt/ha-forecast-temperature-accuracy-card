@@ -11,6 +11,7 @@ Thumbs.db
 # Local development
 CLAUDE.md
 claude.md
+GEMINI.md
 
 # Node (if adding build process later)
 node_modules/
